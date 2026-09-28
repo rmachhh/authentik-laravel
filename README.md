@@ -136,6 +136,49 @@ Route::middleware(['web', 'authentik.group:myapp-access,myapp-contractor'])->gro
 | `$user->hasAccessTo($group)` | Fails closed when no group is configured |
 | `authentik.group` middleware | 403 when the group is missing, redirect to sign-in when not authenticated |
 
+## Importing users
+
+Move this application's users into authentik. Repeatable, and one-directional:
+the application stays the source of truth for who exists.
+
+```php
+use Authentik\AuthentikUserImport;
+
+$import = app(AuthentikUserImport::class);   // built from config
+
+// Nothing is written:
+$preview = $import->preview([
+    ['email' => 'alex@example.com', 'name' => 'Alex'],
+]);
+// -> users[].action: "create" | "add to group"
+
+// Writes:
+$result = $import->import($users);
+// -> summary: total, created, already present, group additions, failed
+```
+
+Requires an API token, which is a **far more powerful credential** than the
+sign-in client secret. It is configured separately and never used on a sign-in
+path:
+
+```dotenv
+AUTHENTIK_ADMIN_URL=http://localhost:9000
+AUTHENTIK_ADMIN_TOKEN=
+```
+
+Every imported user joins `authentik.app_group` and nothing else. Roles are not
+mirrored: access is one decision, and the application owns everything else.
+
+**What it will not do**, deliberately:
+
+- **Delete.** Removing a user from a shared identity provider affects every
+  connected system, so it stays a deliberate act.
+- **Set a password.** It establishes who exists, not how they sign in.
+- **Mirror roles.** A static role here does not become an authentik group.
+
+A per-user failure is reported in the results rather than aborting the run, so
+one bad address does not stop the other ninety-nine.
+
 ## Failover between instances
 
 Configuration errors are **not** failed over — a typo should not look like an

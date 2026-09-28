@@ -28,6 +28,11 @@ final class NativeTransport implements Transport
         return $this->request('POST', $url, $body, $headers);
     }
 
+    public function patch(string $url, array $body = [], array $headers = []): array
+    {
+        return $this->request('PATCH', $url, $body, $headers);
+    }
+
     /**
      * @param  array<string, string>|null  $body
      * @param  array<string, string>  $headers

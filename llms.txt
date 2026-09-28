@@ -88,6 +88,16 @@ starts a sign-in. The callback completes against the instance that started it,
 because a code can only be exchanged by its issuer. Configuration errors are not
 failed over.
 
+## Importing users
+
+`AuthentikUserImport` moves an application's users into authentik. It is
+repeatable: an existing user is not recreated, and membership is only written
+when missing. It never deletes anyone, never sets a password, and never mirrors
+roles. Call `preview($users)` first — it writes nothing.
+
+Needs `AUTHENTIK_ADMIN_URL` and `AUTHENTIK_ADMIN_TOKEN`, separate from the
+sign-in credentials because the token is far more powerful.
+
 ## Rules an agent must not break
 
 - Never assign roles or permissions from the groups claim.

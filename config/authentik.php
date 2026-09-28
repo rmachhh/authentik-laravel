@@ -49,6 +49,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Admin API (user import)
+    |--------------------------------------------------------------------------
+    |
+    | Sign-in only needs the OIDC endpoints. Importing users needs an API token
+    | belonging to a service account, which is a far more powerful credential.
+    | It is configured separately and never used on a sign-in path.
+    |
+    */
+
+    'admin_base_url' => env('AUTHENTIK_ADMIN_URL'),
+
+    'admin_token' => env('AUTHENTIK_ADMIN_TOKEN'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Instances
     |--------------------------------------------------------------------------
     |

@@ -25,4 +25,11 @@ interface Transport
      * @return array{status: int, body: string}
      */
     public function post(string $url, array $body = [], array $headers = []): array;
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @param  array<string, string>  $headers
+     * @return array{status: int, body: string}
+     */
+    public function patch(string $url, array $body = [], array $headers = []): array;
 }

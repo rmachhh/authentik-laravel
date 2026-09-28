@@ -37,4 +37,14 @@ final class LaravelTransport implements Transport
 
         return ['status' => $response->status(), 'body' => $response->body()];
     }
+
+    public function patch(string $url, array $body = [], array $headers = []): array
+    {
+        $response = \Illuminate\Support\Facades\Http::withHeaders($headers)
+            ->asJson()
+            ->timeout($this->timeout)
+            ->patch($url, $body);
+
+        return ['status' => $response->status(), 'body' => $response->body()];
+    }
 }

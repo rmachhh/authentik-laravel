@@ -40,6 +40,20 @@ class ServiceProvider extends BaseServiceProvider
 
             return new FailoverAuthentikClient($instances, $onFailover);
         });
+
+        // Built from configuration: the constructor takes a URL and a token,
+        // which the container cannot guess.
+        $this->app->singleton(AuthentikUserImport::class, function ($app) {
+            $config = $app['config'];
+
+            return new AuthentikUserImport(
+                baseUrl: rtrim((string) $config->get('authentik.admin_base_url', ''), '/'),
+                token: (string) $config->get('authentik.admin_token', ''),
+                appGroup: (string) $config->get('authentik.app_group', ''),
+                timeout: (int) $config->get('authentik.timeout', 15),
+                transport: new LaravelTransport((int) $config->get('authentik.timeout', 15)),
+            );
+        });
     }
 
     public function boot(): void

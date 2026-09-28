@@ -58,6 +58,10 @@ AUTHENTIK_REDIRECT_URI=http://localhost:8000/auth/callback
 AUTHENTIK_APP_GROUP=myapp-access
 # Optional: only for a system with a single role.
 AUTHENTIK_APP_ROLE=superadmin
+
+# Importing users needs an API token, not the sign-in secret.
+AUTHENTIK_ADMIN_URL=http://localhost:9000
+AUTHENTIK_ADMIN_TOKEN=
 ```
 
 `AUTHENTIK_CLIENT_SECRET` belongs in `.env` only. Never commit it.
