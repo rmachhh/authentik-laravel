@@ -178,7 +178,51 @@ Route::middleware(['web', 'authentik.group'])->group(function () {
 Route::middleware(['web', 'authentik.group:myapp-access,myapp-contractor'])->group(...);
 ```
 
-## Step 7 — Verify
+## Step 7 (optional) — Import existing users
+
+Only needed when the application already has users and authentik has none. A new
+application can skip this and let accounts be created as people join.
+
+```php
+use Authentik\AuthentikUserImport;
+
+$import = app(AuthentikUserImport::class);   // built from config
+
+$users = User::query()
+    ->whereNull('deleted_at')
+    ->get()
+    ->map(fn ($u) => ['email' => $u->email, 'name' => $u->name])
+    ->all();
+
+// Always preview first. This writes nothing.
+$preview = $import->preview($users);
+// $preview['summary'] -> total, create, already present
+// $preview['users'][] -> action: "create" | "add to group"
+
+// Then, once the preview looks right:
+$result = $import->import($users);
+// $result['summary'] -> total, created, already present, group additions, failed
+```
+
+Requires `AUTHENTIK_ADMIN_URL` and `AUTHENTIK_ADMIN_TOKEN` from step 3.
+
+**Rules this import follows. Do not change them:**
+
+- **Never deletes.** Removing a user from a shared identity provider affects
+  every connected system, so it stays a deliberate act.
+- **Never sets a password.** It establishes who exists, not how they sign in.
+- **Never mirrors roles.** Every imported user joins `authentik.app_group`.
+- **Repeatable.** An existing user is not recreated and membership is only
+  written when missing, so a second run is safe.
+- **A failure is per user.** One bad address is reported in the results rather
+  than abandoning the rest.
+
+**Verify:** run the import twice. The second run must report `created: 0` and
+`group additions: 0`. If it reports more, the import is not reconciling.
+
+---
+
+## Step 8 — Verify
 
 Run the built-in check first. It reports configuration, discovery, PKCE, the
 redirect URI and the access guard, with a fix for each failure:

@@ -26,12 +26,23 @@ These are load-bearing. A change that breaks one is a bug even if tests pass.
 7. **Refuse plain HTTP** unless `allow_insecure` is set, and only for local
    development.
 8. **Never log tokens, codes or client secrets.** Log outcomes and group names.
+9. **The user import never deletes, never sets a password, and never mirrors
+   roles.** Removing a user from a shared identity provider affects every
+   connected system, so it stays a deliberate act. A role here does not become
+   an authentik group.
+10. **The import is repeatable.** An existing user is not recreated, and group
+    membership is only written when missing. Never make it a one-shot that
+    creates duplicates on a second run.
+11. **The import needs a separate admin token.** It is a far more powerful
+    credential than the sign-in client secret. Never reuse one for the other,
+    and never put the admin token on a sign-in path.
 
 ## Layout
 
 ```
 src/
   AuthentikClient.php           one instance: discovery, PKCE URL, code exchange
+  AuthentikUserImport.php       user import; needs an API token, not the secret
   FailoverAuthentikClient.php   several instances, tried in order
   AuthentikUser.php             the access decision and claim parsing (pure)
   FlowState.php                 the flow state to store between redirect and callback
@@ -48,6 +59,11 @@ SETUP.md                        the exact steps for integrating into an applicat
 llms.txt                        orientation for AI agents
 ```
 
+**`AuthentikUserImport` must not use the OIDC client.** The import is
+administered with an API token, and mixing the two would let a sign-in path
+reach an operation that creates users. It talks to the API through the same
+`Contracts\Transport`.
+
 **`AuthentikClient` must not use the global helpers** (`config()`, `logger()`,
 `abort()`, `redirect()`). They require a booted application and make the client
 untestable. Dependencies are injected; see `RequireAppGroup` for the pattern.
@@ -58,7 +74,7 @@ from the client, or the package stops working outside a Laravel application.
 ## Testing
 
 ```bash
-LARAVEL_VENDOR=/path/to/app/vendor vendor/bin/phpunit   # 19 tests, no credentials
+LARAVEL_VENDOR=/path/to/app/vendor vendor/bin/phpunit   # no credentials or network
 LARAVEL_ENV=/path/to/app/.env php tests/live-check.php   # live, needs authentik
 LARAVEL_ENV=/path/to/app/.env php tests/run-doctor.php   # the artisan command
 ```
@@ -69,6 +85,9 @@ LARAVEL_ENV=/path/to/app/.env php tests/run-doctor.php   # the artisan command
 - A test that asserts a bug is fixed must fail without the fix.
 - `tests/live-check.php` and `tests/run-doctor.php` are checks, not PHPUnit
   tests; keep them runnable standalone.
+- The import tests need no credentials: `AuthentikUserImport` takes an injected
+  `Transport`, so it is tested against a scripted one. Do not make it reach the
+  network in a unit test.
 
 ## Changing the public API
 
