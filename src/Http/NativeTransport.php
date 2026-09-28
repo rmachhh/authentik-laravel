@@ -34,7 +34,7 @@ final class NativeTransport implements Transport
     }
 
     /**
-     * @param  array<string, string>|null  $body
+     * @param  array<string, mixed>|null  $body
      * @param  array<string, string>  $headers
      * @return array{status: int, body: string}
      */
@@ -43,7 +43,15 @@ final class NativeTransport implements Transport
         $handle = curl_init();
 
         $headerLines = ['Accept: application/json'];
+        $contentType = null;
+
         foreach ($headers as $name => $value) {
+            // The caller decides the encoding. Appending a second Content-Type
+            // produces a combined value that the API rejects with 415.
+            if (strtolower($name) === 'content-type') {
+                $contentType = $value;
+                continue;
+            }
             $headerLines[] = $name.': '.$value;
         }
 
@@ -58,11 +66,20 @@ final class NativeTransport implements Transport
         ]);
 
         if ($body !== null) {
-            curl_setopt($handle, CURLOPT_POSTFIELDS, http_build_query($body));
-            curl_setopt($handle, CURLOPT_HTTPHEADER, array_merge(
-                $headerLines,
-                ['Content-Type: application/x-www-form-urlencoded'],
-            ));
+            $isJson = $contentType !== null && str_contains(strtolower($contentType), 'json');
+
+            // JSON when the caller asked for it, form-encoded otherwise (which
+            // is what the OIDC token endpoint expects).
+            curl_setopt(
+                $handle,
+                CURLOPT_POSTFIELDS,
+                $isJson ? json_encode($body) : http_build_query($body),
+            );
+
+            $headerLines[] = 'Content-Type: '.($contentType
+                ?? 'application/x-www-form-urlencoded');
+
+            curl_setopt($handle, CURLOPT_HTTPHEADER, $headerLines);
         }
 
         $response = curl_exec($handle);

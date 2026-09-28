@@ -66,6 +66,16 @@ class FakeTransport implements Transport
     }
 }
 
+/**
+ * The import is tested against a fake transport, which covers reconciliation,
+ * group-membership merging and per-user failures.
+ *
+ * It cannot cover the real transports: a fake transport replaces the very code
+ * that once sent a duplicated Content-Type header (rejected by authentik with
+ * 415). That class of bug only appears over real HTTP, so it is covered by
+ * tests/live-check.php and by running the import against a live instance. Do
+ * not add a fake-transport test for it and believe it.
+ */
 final class AuthentikUserImportTest extends TestCase
 {
     private const USERS = [
@@ -280,4 +290,5 @@ final class AuthentikUserImportTest extends TestCase
         self::assertSame('failed', $result['results'][0]['status']);
         self::assertNotNull($result['results'][0]['error']);
     }
+
 }
