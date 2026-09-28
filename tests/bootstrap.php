@@ -25,9 +25,15 @@ if (! is_file($vendor.'/autoload.php')) {
 
 require $vendor.'/autoload.php';
 
-// Register this package's own namespace, which the application's autoloader
-// knows nothing about.
-spl_autoload_register(static function (string $class): void {
+// Load this package's source explicitly, before anything can autoload it.
+//
+// A sibling application may also have the package installed in its vendor
+// directory. Composer's autoloader is registered first, so without this the
+// suite would silently exercise that installed copy instead of the code being
+// edited here — which is exactly how a fix can appear to do nothing.
+$sourceRoot = __DIR__.'/../src';
+
+spl_autoload_register(static function (string $class) use ($sourceRoot): void {
     $prefix = 'Authentik\\';
 
     if (! str_starts_with($class, $prefix)) {
@@ -35,9 +41,21 @@ spl_autoload_register(static function (string $class): void {
     }
 
     $relative = substr($class, strlen($prefix));
-    $path = __DIR__.'/../src/'.str_replace('\\', '/', $relative).'.php';
+    $path = $sourceRoot.'/'.str_replace('\\', '/', $relative).'.php';
 
     if (is_file($path)) {
         require $path;
     }
-});
+}, true, true);  // prepend: this package's source wins over an installed copy
+
+foreach ([
+    'AuthentikException',
+    'Contracts/Transport',
+    'Http/NativeTransport',
+    'AuthentikUserImport',
+] as $required) {
+    $file = $sourceRoot.'/'.$required.'.php';
+    if (is_file($file) && ! class_exists('Authentik\\'.str_replace('/', '\\', $required), false)) {
+        require_once $file;
+    }
+}

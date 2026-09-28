@@ -291,4 +291,91 @@ final class AuthentikUserImportTest extends TestCase
         self::assertNotNull($result['results'][0]['error']);
     }
 
+    public function test_it_resolves_a_username_collision(): void
+    {
+        // A local part is not unique: two people at different schools both
+        // called John derive the same username. authentik's are globally
+        // unique, so the second must be qualified rather than failed.
+        $transport = new class extends FakeTransport {
+            /** @var list<string> */
+            public array $usernames = [];
+
+            public function get(string $url, array $headers = []): array
+            {
+                if (str_contains($url, '/groups/?')) {
+                    return ['status' => 200, 'body' => json_encode([
+                        'results' => [['pk' => 'grp-1', 'name' => 'myapp-access', 'users' => []]],
+                    ])];
+                }
+
+                return ['status' => 200, 'body' => json_encode(['results' => []])];
+            }
+
+            public function post(string $url, array $body = [], array $headers = []): array
+            {
+                if (str_ends_with($url, '/groups/')) {
+                    return ['status' => 201, 'body' => json_encode(['pk' => 'grp-1', 'name' => 'myapp-access', 'users' => []])];
+                }
+
+                if (in_array($body['username'] ?? '', $this->usernames, true)) {
+                    return ['status' => 400, 'body' => json_encode(['username' => ['This field must be unique.']])];
+                }
+
+                $this->usernames[] = $body['username'] ?? '';
+
+                return ['status' => 201, 'body' => json_encode(['pk' => count($this->usernames)])];
+            }
+
+            public function patch(string $url, array $body = [], array $headers = []): array
+            {
+                return ['status' => 200, 'body' => json_encode(['pk' => 'grp-1'])];
+            }
+        };
+
+        $result = $this->importer($transport)->import([
+            ['email' => 'john@a.example.com'],
+            ['email' => 'john@b.example.com'],
+        ]);
+
+        self::assertSame(2, $result['summary']['created'], 'the second user was not created');
+        self::assertSame(0, $result['summary']['failed']);
+        self::assertSame(['john', 'john-bexamplecom'], $transport->usernames);
+    }
+
+    public function test_it_does_not_retry_a_failure_that_is_not_a_taken_username(): void
+    {
+        // Retrying a malformed address or a permissions problem would fail
+        // again, and would hide the real error.
+        $transport = new class extends FakeTransport {
+            public int $attempts = 0;
+
+            public function get(string $url, array $headers = []): array
+            {
+                if (str_contains($url, '/groups/?')) {
+                    return ['status' => 200, 'body' => json_encode([
+                        'results' => [['pk' => 'grp-1', 'name' => 'myapp-access', 'users' => []]],
+                    ])];
+                }
+
+                return ['status' => 200, 'body' => json_encode(['results' => []])];
+            }
+
+            public function post(string $url, array $body = [], array $headers = []): array
+            {
+                if (str_ends_with($url, '/groups/')) {
+                    return ['status' => 201, 'body' => json_encode(['pk' => 'grp-1', 'users' => []])];
+                }
+
+                $this->attempts++;
+
+                return ['status' => 400, 'body' => json_encode(['email' => ['Enter a valid email address.']])];
+            }
+        };
+
+        $result = $this->importer($transport)->import([['email' => 'alex@example.com']]);
+
+        self::assertSame(1, $result['summary']['failed']);
+        self::assertSame(1, $transport->attempts, 'a non-username failure was retried');
+        self::assertStringContainsString('valid email', $result['results'][0]['error']);
+    }
 }

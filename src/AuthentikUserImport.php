@@ -201,6 +201,7 @@ final class AuthentikUserImport
     {
         $seen = [];
         $out = [];
+        $claimed = [];
 
         foreach ($users as $user) {
             $email = trim((string) ($user['email'] ?? ''));
@@ -218,19 +219,70 @@ final class AuthentikUserImport
             $out[] = [
                 'email' => $email,
                 'name' => $name !== '' ? $name : $email,
-                'username' => $username !== '' ? $username : $this->usernameFor($email),
+                'username' => $username !== ''
+                    ? $username
+                    : $this->usernameFor($email, $claimed),
             ];
+
+            $claimed[] = $out[count($out) - 1]['username'];
         }
 
         return $out;
     }
 
-    /** A stable, collision-free username derived from the address. */
-    private function usernameFor(string $email): string
+    /**
+     * A username derived from the address.
+     *
+     * Readable for the common case — `ralph@rhet-corp.com` becomes `ralph` —
+     * and unique when it has to be. The local part alone is not unique:
+     * `john@a.example` and `john@b.example` both reduce to `john`, and two
+     * people at different schools routinely share a first name. On a collision
+     * the domain is appended, so the second address still gets a username
+     * rather than the import failing with "this field must be unique".
+     *
+     * The suffix is derived from the address, not random, so the same input
+     * always produces the same username and a re-run does not create a second
+     * account.
+     *
+     * @param  list<string>  $taken  usernames already claimed in this run
+     */
+    private function usernameFor(string $email, array $taken = []): string
     {
-        $local = strstr($email, '@', true) ?: $email;
+        $local = $this->slug(strstr($email, '@', true) ?: $email);
+        $taken = array_map('strtolower', $taken);
 
-        return mb_strtolower((string) preg_replace('/[^A-Za-z0-9._-]/', '-', $local));
+        if ($local !== '' && ! in_array($local, $taken, true)) {
+            return $local;
+        }
+
+        $base = $local !== '' ? $local : 'user';
+        $domain = $this->domainSlug((string) strstr($email, '@'));
+
+        // Collision: qualify with the domain, which is what actually differs.
+        $suffixed = $domain === '' ? $base : $base.'-'.$domain;
+
+        if (! in_array($suffixed, $taken, true)) {
+            return $suffixed;
+        }
+
+        // Two addresses that reduce to the same string even with the domain:
+        // fall back to a short digest, which cannot realistically collide.
+        return $base.'-'.substr(hash('sha256', $email), 0, 8);
+    }
+
+    /** A readable slug: letters, digits, dot, underscore and hyphen. */
+    private function slug(string $value): string
+    {
+        return trim(
+            mb_strtolower((string) preg_replace('/[^A-Za-z0-9._-]/', '-', $value)),
+            '-',
+        );
+    }
+
+    /** A slug for a domain: alphanumeric only, so `@b.example` becomes `bexample`. */
+    private function domainSlug(string $domain): string
+    {
+        return mb_strtolower((string) preg_replace('/[^A-Za-z0-9]/', '', $domain));
     }
 
     /** @return array<string, mixed>|null */
@@ -251,37 +303,97 @@ final class AuthentikUserImport
     }
 
     /**
+     * Create the user, resolving a username that is already taken.
+     *
+     * The preferred username comes from the address, but authentik's usernames
+     * are globally unique — and a local part is not: two people at different
+     * schools both called John produce `john` twice. When authentik refuses the
+     * name, it is retried with the domain appended, then with a digest. Without
+     * this the second John is simply reported as a failure.
+     *
      * @param  array{email: string, name: string, username: string}  $candidate
      * @return array<string, mixed>
      */
     private function createUser(array $candidate): array
     {
-        $response = $this->http()->post(
-            $this->baseUrl.'/api/v3/core/users/',
-            [
-                'username' => $candidate['username'],
-                'email' => $candidate['email'],
-                'name' => $candidate['name'],
-                'is_active' => true,
-                'path' => 'users',
-            ],
-            $this->headers() + ['Content-Type' => 'application/json'],
-        );
+        $lastError = null;
 
-        if (! in_array($response['status'], [200, 201], true)) {
-            throw new AuthentikException(
-                "Could not create {$candidate['email']}: HTTP {$response['status']} ".
-                $this->summarise($response['body'])
+        foreach ($this->usernameAttempts($candidate) as $username) {
+            $response = $this->http()->post(
+                $this->baseUrl.'/api/v3/core/users/',
+                [
+                    'username' => $username,
+                    'email' => $candidate['email'],
+                    'name' => $candidate['name'],
+                    'is_active' => true,
+                    'path' => 'users',
+                ],
+                $this->headers() + ['Content-Type' => 'application/json'],
             );
+
+            if (in_array($response['status'], [200, 201], true)) {
+                $body = json_decode($response['body'], true);
+
+                if (! is_array($body) || ! isset($body['pk'])) {
+                    throw new AuthentikException(
+                        "authentik accepted {$candidate['email']} but returned no user"
+                    );
+                }
+
+                return $body;
+            }
+
+            $body = json_decode($response['body'], true);
+            $lastError = $response['status'].' '.$this->summarise($response['body']);
+
+            // Only a taken username is worth retrying. Anything else — a
+            // malformed address, a permissions problem — will fail again.
+            if (! $this->usernameIsTaken($body)) {
+                break;
+            }
         }
 
-        $body = json_decode($response['body'], true);
+        throw new AuthentikException(
+            "Could not create {$candidate['email']}: HTTP {$lastError}"
+        );
+    }
 
-        if (! is_array($body) || ! isset($body['pk'])) {
-            throw new AuthentikException("authentik accepted {$candidate['email']} but returned no user");
+    /**
+     * Usernames to try, in order of preference.
+     *
+     * @param  array{email: string, username: string}  $candidate
+     * @return list<string>
+     */
+    private function usernameAttempts(array $candidate): array
+    {
+        $preferred = $candidate['username'];
+        $domain = $this->domainSlug((string) strstr($candidate['email'], '@'));
+        $qualified = $domain === '' ? $preferred : $preferred.'-'.$domain;
+
+        return array_values(array_unique([
+            $preferred,
+            $qualified,
+            $preferred.'-'.substr(hash('sha256', $candidate['email']), 0, 8),
+        ]));
+    }
+
+    /** @param array<string, mixed>|null $body */
+    private function usernameIsTaken(?array $body): bool
+    {
+        if (! is_array($body)) {
+            return false;
         }
 
-        return $body;
+        foreach ($body as $field => $messages) {
+            if ($field !== 'username') {
+                continue;
+            }
+            $text = is_array($messages) ? implode(' ', array_map('strval', $messages)) : (string) $messages;
+
+            return stripos($text, 'unique') !== false || stripos($text, 'exists') !== false;
+        }
+
+        return false;
     }
 
     /** @return array<string, mixed> */
