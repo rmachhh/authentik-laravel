@@ -1,0 +1,113 @@
+# authentik-laravel
+
+> Single sign-on against authentik for Laravel. One group per application is the
+> entire access model. Roles are never derived from authentik.
+
+## What this package does
+
+Adds authentik sign-in (OIDC authorization code + PKCE) to a Laravel application,
+and decides whether the signed-in user may use the application at all. It does not
+manage roles, permissions or users.
+
+## The access rule, in full
+
+1. Create one group per application in authentik, e.g. `myapp-access`.
+2. If the signed-in user's group list contains that group, they may use the app.
+3. Otherwise they are denied.
+4. Roles are the application's own concern and must not be set from authentik.
+
+## Install
+
+```json
+{
+  "repositories": [
+    { "type": "vcs", "url": "https://github.com/rmachhh/authentik-laravel" }
+  ],
+  "require": {
+    "rmachhh/authentik-laravel": "^0.1"
+  }
+}
+```
+
+```bash
+composer update rmachhh/authentik-laravel
+php artisan vendor:publish --tag=authentik-config
+```
+
+Requires PHP 8.1+ and Laravel 10, 11, 12 or 13. No runtime dependency beyond the
+framework: HTTP goes through Laravel's client, so `Http::fake()` works in tests.
+
+## Minimal integration
+
+`SETUP.md` in this repository contains the complete, exact code to add. Follow it
+literally rather than inventing the wiring.
+
+The shape, for orientation:
+
+```php
+// 1. start
+$result = Authentik::startAuthorization();          // ['url' => ..., 'flow' => ...]
+Session::put('authentik.flow', $result['flow']->toArray());
+return redirect()->away($result['url']);
+
+// 2. finish
+$flow = FlowState::fromArray(Session::pull('authentik.flow', []));
+$remote = Authentik::completeLogin(request()->query(), $flow);
+abort_unless($remote->hasAccessTo(config('authentik.app_group')), 403);
+
+// 3. protect
+Route::middleware(['web', 'authentik.group'])->group(...);
+```
+
+## Required environment
+
+| Variable | Example | Notes |
+|---|---|---|
+| `AUTHENTIK_ISSUER` | `https://id.example.com/application/o/myapp/` | Trailing slash matters |
+| `AUTHENTIK_CLIENT_ID` | `myapp` | From the provider |
+| `AUTHENTIK_CLIENT_SECRET` | | Server-side only |
+| `AUTHENTIK_REDIRECT_URI` | `https://myapp.example.com/auth/callback` | Must match the provider exactly |
+| `AUTHENTIK_APP_GROUP` | `myapp-access` | The group that grants access |
+
+## API
+
+| Member | Purpose |
+|---|---|
+| `Authentik::startAuthorization()` | Build the PKCE URL and the flow state to store |
+| `Authentik::completeLogin($query, $flow)` | Validate state, PKCE and nonce; return an `AuthentikUser` |
+| `AuthentikUser::hasAccessTo($group)` | The access decision; fails closed |
+| `AuthentikUser::matchedGroup($group)` | Which group granted access, for logging |
+| `authentik.group` middleware | 403 when the group is missing, redirect when not signed in |
+| `Authentik::instances()` | Configured instances, in the order tried |
+
+## Failover
+
+Configure several instances in `config/authentik.php`. The first reachable one
+starts a sign-in. The callback completes against the instance that started it,
+because a code can only be exchanged by its issuer. Configuration errors are not
+failed over.
+
+## Rules an agent must not break
+
+- Never assign roles or permissions from the groups claim.
+- Never treat an empty group list as "no access" when the user already has local
+  roles; leave existing access alone.
+- Never log tokens, codes or client secrets.
+- Never default the app group to something permissive. No group configured means
+  deny everything.
+- Never send the PKCE verifier, state or nonce to the browser in readable form.
+- Do not allow `allow_insecure` outside local development.
+
+## Verifying the work
+
+1. `php artisan authentik:doctor` — checks configuration, discovery, PKCE, the
+   redirect URI and the access guard, and prints a fix for each failure.
+2. `vendor/bin/phpunit` — the package suite.
+3. `php tests/live-check.php` — the same checks plus failover, against a running
+   authentik.
+
+## Documentation
+
+- `SETUP.md` — the exact code to add, with a verification step
+- `README.md` — full API reference
+- `AGENTS.md` — conventions for agents contributing to this repository

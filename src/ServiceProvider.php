@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Authentik;
 
+use Authentik\Console\DoctorCommand;
 use Authentik\Http\LaravelTransport;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Support\ServiceProvider as BaseServiceProvider;
@@ -44,6 +45,10 @@ class ServiceProvider extends BaseServiceProvider
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
+            $this->commands([
+                DoctorCommand::class,
+            ]);
+
             $this->publishes([
                 __DIR__.'/../config/authentik.php' => config_path('authentik.php'),
             ], 'authentik-config');
