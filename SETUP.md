@@ -56,6 +56,8 @@ AUTHENTIK_CLIENT_ID=myapp
 AUTHENTIK_CLIENT_SECRET=
 AUTHENTIK_REDIRECT_URI=http://localhost:8000/auth/callback
 AUTHENTIK_APP_GROUP=myapp-access
+# Optional: only for a system with a single role.
+AUTHENTIK_APP_ROLE=superadmin
 ```
 
 `AUTHENTIK_CLIENT_SECRET` belongs in `.env` only. Never commit it.

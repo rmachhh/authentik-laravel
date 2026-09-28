@@ -63,6 +63,8 @@ AUTHENTIK_CLIENT_ID=myapp
 AUTHENTIK_CLIENT_SECRET=
 AUTHENTIK_REDIRECT_URI=https://myapp.example.com/auth/callback
 AUTHENTIK_APP_GROUP=myapp-access
+# Optional: only for a system with a single role.
+AUTHENTIK_APP_ROLE=superadmin
 ```
 
 The redirect URI must match the authentik provider **exactly**.

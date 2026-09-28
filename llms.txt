@@ -68,6 +68,7 @@ Route::middleware(['web', 'authentik.group'])->group(...);
 | `AUTHENTIK_CLIENT_SECRET` | | Server-side only |
 | `AUTHENTIK_REDIRECT_URI` | `https://myapp.example.com/auth/callback` | Must match the provider exactly |
 | `AUTHENTIK_APP_GROUP` | `myapp-access` | The group that grants access |
+| `AUTHENTIK_APP_ROLE` | `superadmin` | Optional. Only for a system with one role. |
 
 ## API
 

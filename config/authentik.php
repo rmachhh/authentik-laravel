@@ -30,6 +30,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | The application's own role
+    |--------------------------------------------------------------------------
+    |
+    | For a system that has exactly one role, name it here rather than writing a
+    | group-to-role map. Holding the access group above then grants this role.
+    |
+    | Leave it null for a system with several roles: those belong to the
+    | application and are decided there, not by authentik.
+    |
+    | This package never assigns a role. It reports the role a signed-in user
+    | holds so the application can use it; the groups claim is only ever an
+    | access decision.
+    |
+    */
+
+    'app_role' => env('AUTHENTIK_APP_ROLE'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Instances
     |--------------------------------------------------------------------------
     |
