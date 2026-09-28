@@ -1,0 +1,41 @@
+{
+  "name": "rmachhh/authentik-laravel",
+  "description": "Single sign-on against authentik for Laravel, with one group per application. Failover between instances supported.",
+  "type": "library",
+  "license": "MIT",
+  "keywords": ["authentik", "oidc", "sso", "laravel", "openid-connect", "authentication"],
+  "require": {
+    "php": "^8.1",
+    "illuminate/support": "^10.0|^11.0|^12.0|^13.0",
+    "illuminate/http": "^10.0|^11.0|^12.0|^13.0",
+    "illuminate/session": "^10.0|^11.0|^12.0|^13.0"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^10.0|^11.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Authentik\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Authentik\\Tests\\": "tests/"
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "Authentik\\ServiceProvider"
+      ],
+      "aliases": {
+        "Authentik": "Authentik\\Facades\\Authentik"
+      }
+    }
+  },
+  "scripts": {
+    "test": "phpunit"
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}
