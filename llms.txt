@@ -24,7 +24,7 @@ manage roles, permissions or users.
     { "type": "vcs", "url": "https://github.com/rmachhh/authentik-laravel" }
   ],
   "require": {
-    "rmachhh/authentik-laravel": "^0.1"
+    "rmachhh/authentik-laravel": "0.2.4"
   }
 }
 ```
@@ -66,7 +66,7 @@ Route::middleware(['web', 'authentik.group'])->group(...);
 | `AUTHENTIK_ISSUER` | `https://id.example.com/application/o/myapp/` | Trailing slash matters |
 | `AUTHENTIK_CLIENT_ID` | `myapp` | From the provider |
 | `AUTHENTIK_CLIENT_SECRET` | | Server-side only |
-| `AUTHENTIK_REDIRECT_URI` | `https://myapp.example.com/auth/callback` | Must match the provider exactly |
+| `AUTHENTIK_REDIRECT_URI` | `https://myapp.example.com/auth/authentik/callback` | Must match the provider exactly |
 | `AUTHENTIK_APP_GROUP` | `myapp-access` | The group that grants access |
 | `AUTHENTIK_APP_ROLE` | `superadmin` | Optional. Only for a system with one role. |
 
@@ -78,6 +78,7 @@ Route::middleware(['web', 'authentik.group'])->group(...);
 | `Authentik::completeLogin($query, $flow)` | Validate state, PKCE and nonce; return an `AuthentikUser` |
 | `AuthentikUser::hasAccessTo($group)` | The access decision; fails closed |
 | `AuthentikUser::matchedGroup($group)` | Which group granted access, for logging |
+| `AuthentikUser::hasVerifiedEmail()` | True only when the provider asserts the address is verified |
 | `authentik.group` middleware | 403 when the group is missing, redirect when not signed in |
 | `Authentik::instances()` | Configured instances, in the order tried |
 
@@ -108,6 +109,10 @@ sign-in credentials because the token is far more powerful.
   deny everything.
 - Never send the PKCE verifier, state or nonce to the browser in readable form.
 - Do not allow `allow_insecure` outside local development.
+- Never match a local account on an email address unless
+  `AuthentikUser::hasVerifiedEmail()` is true.
+- Never relink an account whose `authentik_sub` is already set to a different
+  value.
 
 ## Verifying the work
 

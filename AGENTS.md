@@ -36,6 +36,12 @@ These are load-bearing. A change that breaks one is a bug even if tests pass.
 11. **The import needs a separate admin token.** It is a far more powerful
     credential than the sign-in client secret. Never reuse one for the other,
     and never put the admin token on a sign-in path.
+12. **Never match a local account on an unverified email, and never relink a
+    different subject.** Match on `authentik_sub` first. Fall back to email only
+    when `AuthentikUser::hasVerifiedEmail()` is true, because authentik's user
+    settings flow lets an account holder edit their own address. An account
+    whose `authentik_sub` is already set must not be relinked to a different
+    value. Roles are still never assigned from the `groups` claim.
 
 ## Layout
 

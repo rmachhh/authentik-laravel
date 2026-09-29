@@ -24,9 +24,15 @@ return [
     |--------------------------------------------------------------------------
     | Where to send someone who is not signed in
     |--------------------------------------------------------------------------
+    |
+    | The route that starts a sign-in in *your* application, which must forward
+    | to this package's authorize URL. The default matches the route names the
+    | scaffold publishes; change it if your route differs, because a wrong value
+    | here produces a redirect to a 404 rather than an error anyone can read.
+    |
     */
 
-    'login_route' => env('AUTHENTIK_LOGIN_ROUTE', '/auth/redirect'),
+    'login_route' => env('AUTHENTIK_LOGIN_ROUTE', '/auth/authentik'),
 
     /*
     |--------------------------------------------------------------------------
@@ -100,8 +106,17 @@ return [
     |--------------------------------------------------------------------------
     |
     | `redirect_uri` must match what is registered on the authentik provider,
-    | exactly. The scopes below are all that is needed: `profile` already
-    | includes group membership, so no custom scope is required.
+    | exactly. `profile` already includes group membership, so no custom scope is
+    | required for access decisions.
+    |
+    | `email_verified` matters only if you match a sign-in to a local account by
+    | email. It must be listed here *and* attached to the provider in authentik,
+    | because the stock `email` scope emits `email_verified: False`. Requesting
+    | it without attaching it to the provider fails the sign-in with
+    | `invalid_scope`.
+    |
+    | See `AuthentikUser::hasVerifiedEmail()` for what this claim does and does
+    | not prove.
     |
     */
 

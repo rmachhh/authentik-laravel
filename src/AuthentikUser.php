@@ -104,6 +104,35 @@ final class AuthentikUser
         return null;
     }
 
+    /**
+     * Does the provider assert this address is verified?
+     *
+     * Applications that match a sign-in to a local account by email must check
+     * this before trusting the address, because `sub` is immutable and an email
+     * address often is not.
+     *
+     * Note what this is and is not. It reports the `email_verified` claim; it
+     * does not verify anything itself. On authentik the claim comes from the
+     * scope mappings attached to the provider, and the stock `email` scope
+     * emits `email_verified: False` while the separate `email_verified` scope
+     * emits `True`. So a provider that merely asserts "addresses in this
+     * directory are trustworthy" also satisfies this check — pair it with an
+     * authentik deployment where users cannot edit their own email.
+     *
+     * Absent claim, string "true", and integer 1 all mean the same thing here;
+     * everything else is false.
+     */
+    public function hasVerifiedEmail(): bool
+    {
+        $value = $this->claims['email_verified'] ?? false;
+
+        if (is_string($value)) {
+            return mb_strtolower(trim($value)) === 'true';
+        }
+
+        return $value === true || $value === 1;
+    }
+
     /** @return array<string, mixed> */
     public function toArray(): array
     {
@@ -112,6 +141,7 @@ final class AuthentikUser
             'email' => $this->email,
             'name' => $this->name,
             'groups' => $this->groups,
+            'email_verified' => $this->hasVerifiedEmail(),
         ];
     }
 }

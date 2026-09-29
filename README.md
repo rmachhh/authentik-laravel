@@ -44,10 +44,14 @@ Until the package is on Packagist, install from the repository:
     { "type": "vcs", "url": "https://github.com/rmachhh/authentik-laravel" }
   ],
   "require": {
-    "rmachhh/authentik-laravel": "dev-main"
+    "rmachhh/authentik-laravel": "0.2.4"
   }
 }
 ```
+
+Every `0.2.x` release is a security-relevant change to an authentication path, so
+the version is pinned exactly and raised deliberately: `composer update` will not
+adopt a new one on its own.
 
 ## Configure
 
@@ -61,7 +65,7 @@ php artisan vendor:publish --tag=authentik-config
 AUTHENTIK_ISSUER=https://id.example.com/application/o/myapp/
 AUTHENTIK_CLIENT_ID=myapp
 AUTHENTIK_CLIENT_SECRET=
-AUTHENTIK_REDIRECT_URI=https://myapp.example.com/auth/callback
+AUTHENTIK_REDIRECT_URI=https://myapp.example.com/auth/authentik/callback
 AUTHENTIK_APP_GROUP=myapp-access
 # Optional: only for a system with a single role.
 AUTHENTIK_APP_ROLE=superadmin
@@ -82,7 +86,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
 
 // 1. start a sign-in
-Route::get('/auth/redirect', function () {
+Route::get('/auth/authentik', function () {
     ['url' => $url, 'flow' => $flow] = Authentik::startAuthorization();
 
     // Never sent to the browser as readable data: the verifier is what proves
@@ -93,7 +97,7 @@ Route::get('/auth/redirect', function () {
 });
 
 // 2. finish it
-Route::get('/auth/callback', function () {
+Route::get('/auth/authentik/callback', function () {
     $flow = FlowState::fromArray(Session::pull('authentik.flow', []));
 
     if ($flow->codeVerifier === '') {
@@ -107,7 +111,7 @@ Route::get('/auth/callback', function () {
     }
 
     // The account, and everything it may do, is yours — not authentik's.
-    $user = User::where('email', $remote->email)->firstOrFail();
+    $user = resolveAccount($remote);
     Auth::login($user);
 
     Session::put(RequireAppGroup::SESSION_KEY, $remote);
@@ -120,6 +124,43 @@ Route::middleware(['web', 'authentik.group'])->group(function () {
     Route::get('/dashboard', DashboardController::class);
 });
 ```
+
+`resolveAccount()` is yours to write. Match on `authentik_sub` first, and fall
+back to email only when the provider asserts the address is verified:
+
+```php
+function resolveAccount(AuthentikUser $remote): User
+{
+    // `sub` is issued by authentik and cannot be changed by the account holder.
+    if ($user = User::where('authentik_sub', $remote->subject)->first()) {
+        return $user;
+    }
+
+    // Email is only ever consulted for a first link, and only when verified.
+    if (! $remote->hasVerifiedEmail()) {
+        abort(403, 'Your email address is not verified.');
+    }
+
+    $user = User::where('email', $remote->email)->firstOrFail();
+
+    // Already linked to a different identity. Refuse rather than relink: after
+    // an address changes hands, email alone would hand over the account.
+    if ($user->authentik_sub !== null && $user->authentik_sub !== $remote->subject) {
+        abort(403, 'That account is already linked to another identity.');
+    }
+
+    $user->authentik_sub = $remote->subject;
+    $user->save();
+
+    return $user;
+}
+```
+
+authentik's default user settings flow lets a user edit their own email address.
+Matching on an unverified address therefore lets any signed-in user claim an
+administrator's address, and with it the administrator's account. `sub` is issued
+by authentik and is not editable by the account holder, so it is the only safe
+key. Roles still come from your own database, never from the `groups` claim.
 
 For a route that accepts any one of several groups:
 
@@ -135,6 +176,20 @@ Route::middleware(['web', 'authentik.group:myapp-access,myapp-contractor'])->gro
 | `Authentik::completeLogin()` | State and PKCE validated; nonce checked against the ID token; claims returned |
 | `$user->hasAccessTo($group)` | Fails closed when no group is configured |
 | `authentik.group` middleware | 403 when the group is missing, redirect to sign-in when not authenticated |
+| `$user->hasVerifiedEmail()` | Returns true only when the provider asserts the address is verified |
+
+### Account matching and verified email
+
+authentik's stock `email` scope emits `email_verified: false`. Only the separate
+`email_verified` scope — attached to the provider in authentik **and** listed in
+`authentik.scopes` — makes it `true`. Requesting a scope the provider does not
+have fails the sign-in with `invalid_scope`.
+
+`AuthentikUser::hasVerifiedEmail()` reports that claim; it verifies nothing by
+itself.
+
+Deployment prerequisite: make email read-only in authentik's user settings flow,
+so the address the email fallback matches on cannot be changed by its owner.
 
 ## Importing users
 

@@ -110,8 +110,55 @@ final class AuthentikUserTest extends TestCase
         // toArray is what an application would log or store, so it must not
         // carry anything credential-shaped.
         self::assertSame(
-            ['sub' => 'x', 'email' => 'alex@example.com', 'name' => null, 'groups' => ['myapp-access']],
+            [
+                'sub' => 'x',
+                'email' => 'alex@example.com',
+                'name' => null,
+                'groups' => ['myapp-access'],
+                'email_verified' => false,
+            ],
             $user->toArray(),
         );
+    }
+
+    public function test_it_reports_a_verified_address_from_the_claim(): void
+    {
+        self::assertTrue(AuthentikUser::fromClaims([
+            'sub' => 'x', 'email' => 'alex@example.com', 'email_verified' => true,
+        ])->hasVerifiedEmail());
+
+        self::assertTrue(AuthentikUser::fromClaims([
+            'sub' => 'x', 'email_verified' => 'true',
+        ])->hasVerifiedEmail());
+
+        self::assertTrue(AuthentikUser::fromClaims([
+            'sub' => 'x', 'email_verified' => 1,
+        ])->hasVerifiedEmail());
+    }
+
+    public function test_it_does_not_treat_an_unverified_address_as_verified(): void
+    {
+        // authentik's stock `email` scope emits exactly this, so it is the
+        // common case rather than a contrived one. Treating it as verified is
+        // the bug this method exists to prevent.
+        self::assertFalse(AuthentikUser::fromClaims([
+            'sub' => 'x', 'email' => 'alex@example.com', 'email_verified' => false,
+        ])->hasVerifiedEmail());
+
+        self::assertFalse(AuthentikUser::fromClaims([
+            'sub' => 'x', 'email' => 'alex@example.com',
+        ])->hasVerifiedEmail());
+
+        self::assertFalse(AuthentikUser::fromClaims([
+            'sub' => 'x', 'email_verified' => 'false',
+        ])->hasVerifiedEmail());
+
+        self::assertFalse(AuthentikUser::fromClaims([
+            'sub' => 'x', 'email_verified' => 'yes',
+        ])->hasVerifiedEmail());
+
+        self::assertFalse(AuthentikUser::fromClaims([
+            'sub' => 'x', 'email_verified' => 0,
+        ])->hasVerifiedEmail());
     }
 }
