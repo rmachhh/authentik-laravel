@@ -70,11 +70,13 @@ class FakeTransport implements Transport
  * The import is tested against a fake transport, which covers reconciliation,
  * group-membership merging and per-user failures.
  *
- * It cannot cover the real transports: a fake transport replaces the very code
- * that once sent a duplicated Content-Type header (rejected by authentik with
- * 415). That class of bug only appears over real HTTP, so it is covered by
- * tests/live-check.php and by running the import against a live instance. Do
- * not add a fake-transport test for it and believe it.
+ * It cannot cover the real transports. Two bugs have already lived there and
+ * been invisible here: a duplicated Content-Type header, rejected by authentik
+ * with 415, and an empty body encoded as `[]` rather than `{}`, rejected with
+ * "Expected a dictionary, but got list". Both only appear over real HTTP, so
+ * they are covered by tests/live-check.php and by running against a live
+ * instance. Do not add a fake-transport test for this class of bug and believe
+ * it.
  */
 final class AuthentikUserImportTest extends TestCase
 {

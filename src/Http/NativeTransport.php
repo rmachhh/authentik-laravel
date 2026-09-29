@@ -70,10 +70,17 @@ final class NativeTransport implements Transport
 
             // JSON when the caller asked for it, form-encoded otherwise (which
             // is what the OIDC token endpoint expects).
+            //
+            // An empty body is sent as `{}`, not `[]`. json_encode([]) produces
+            // a list, and authentik rejects that with "Expected a dictionary,
+            // but got list" on endpoints that take no arguments — which is
+            // exactly the case for issuing a recovery link.
             curl_setopt(
                 $handle,
                 CURLOPT_POSTFIELDS,
-                $isJson ? json_encode($body) : http_build_query($body),
+                $isJson
+                    ? ($body === [] ? '{}' : json_encode($body))
+                    : http_build_query($body),
             );
 
             $headerLines[] = 'Content-Type: '.($contentType

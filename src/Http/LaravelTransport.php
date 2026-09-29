@@ -64,9 +64,18 @@ final class LaravelTransport implements Transport
             ->timeout($this->timeout)
             ->acceptJson();
 
-        $request = $contentType !== null && str_contains(strtolower($contentType), 'json')
-            ? $request->asJson()
-            : $request->asForm();
+        $isJson = $contentType !== null && str_contains(strtolower($contentType), 'json');
+
+        // An empty body is sent as `{}`, not `[]`. Laravel's client encodes an
+        // empty array as a JSON list, and authentik rejects that with "Expected
+        // a dictionary, but got list" on endpoints that take no arguments —
+        // which is exactly the case for issuing a recovery link. post() and
+        // patch() are typed `array`, so the raw body is set directly.
+        if ($isJson && $body === []) {
+            return $request->withBody('{}', 'application/json')->{$method}($url);
+        }
+
+        $request = $isJson ? $request->asJson() : $request->asForm();
 
         return $request->{$method}($url, $body);
     }
