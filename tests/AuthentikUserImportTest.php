@@ -378,4 +378,61 @@ final class AuthentikUserImportTest extends TestCase
         self::assertSame(1, $transport->attempts, 'a non-username failure was retried');
         self::assertStringContainsString('valid email', $result['results'][0]['error']);
     }
+
+    // ------------------------------------------------------------- onboarding
+
+    public function test_it_returns_a_recovery_link_for_an_existing_address(): void
+    {
+        // The specific key first: FakeTransport matches on substring, and the
+        // collection URL is a prefix of the recovery URL.
+        $transport = new FakeTransport([
+            '/recovery/' => ['status' => 200, 'body' => ['link' => 'https://id.example.com/if/flow/recovery/?flow_token=abc']],
+            '/api/v3/core/users/' => ['status' => 200, 'body' => ['results' => [['pk' => 7, 'email' => 'alex@example.com']]]],
+        ]);
+
+        $link = $this->importer($transport)->recoveryLink('alex@example.com');
+
+        self::assertSame('https://id.example.com/if/flow/recovery/?flow_token=abc', $link);
+        // It has to address the user it found, not just any user.
+        self::assertStringContainsString('/api/v3/core/users/7/recovery/', $transport->calls[1]['url']);
+    }
+
+    public function test_it_returns_null_and_writes_nothing_when_there_is_no_account(): void
+    {
+        $transport = new FakeTransport([
+            '/recovery/' => ['status' => 200, 'body' => ['link' => 'https://should-not-be-used']],
+            '/api/v3/core/users/' => ['status' => 200, 'body' => ['results' => []]],
+        ]);
+
+        self::assertNull($this->importer($transport)->recoveryLink('nobody@example.com'));
+        self::assertSame(['GET'], $transport->methodsCalled());
+    }
+
+    public function test_it_explains_a_missing_recovery_flow(): void
+    {
+        // The state this deployment was actually in, and the message an operator
+        // needs to see rather than a bare "HTTP 400".
+        $transport = new FakeTransport([
+            '/recovery/' => ['status' => 400, 'body' => ['non_field_errors' => ['No recovery flow set.']]],
+            '/api/v3/core/users/' => ['status' => 200, 'body' => ['results' => [['pk' => 7]]]],
+        ]);
+
+        $this->expectException(AuthentikException::class);
+        $this->expectExceptionMessageMatches('/No recovery flow set/');
+
+        $this->importer($transport)->recoveryLink('alex@example.com');
+    }
+
+    public function test_it_refuses_a_successful_response_with_no_link(): void
+    {
+        $transport = new FakeTransport([
+            '/recovery/' => ['status' => 200, 'body' => []],
+            '/api/v3/core/users/' => ['status' => 200, 'body' => ['results' => [['pk' => 7]]]],
+        ]);
+
+        $this->expectException(AuthentikException::class);
+        $this->expectExceptionMessageMatches('/no recovery link/');
+
+        $this->importer($transport)->recoveryLink('alex@example.com');
+    }
 }

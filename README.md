@@ -234,6 +234,40 @@ mirrored: access is one decision, and the application owns everything else.
 A per-user failure is reported in the results rather than aborting the run, so
 one bad address does not stop the other ninety-nine.
 
+### Getting imported users a way to sign in
+
+An imported identity is created with an **unusable password** — `!` followed by
+random characters, which no guess can match. So it cannot sign in anywhere, and
+that includes SSO into your application: authentik's own login asks for a
+password *before* it will issue an OIDC token. `import()` on its own leaves
+everyone it created unable to sign in.
+
+`recoveryLink()` is the other half of onboarding. It returns a single-use link —
+`https://id.example.com/if/flow/default-recovery-flow/?flow_token=...` — that
+lets the person set their own password. Nobody ever picks or transmits a
+password, and nothing is emailed here: the application decides how the link
+reaches the person.
+
+```php
+$link = $import->recoveryLink('alex@example.com');
+
+if ($link !== null) {
+    Mail::to('alex@example.com')->send(new SetYourPassword($link));
+}
+```
+
+- **`null`** means authentik has no account for that address. It does not create
+  one.
+- **`AuthentikException`** means authentik refused. `No recovery flow set.` means
+  the deployment has no recovery flow configured; `authentik returned no recovery
+  link` means the response carried no link.
+- It takes the same admin token and base URL as the import.
+
+A user who already had an authentik account — created by another system — is
+matched by email and keeps their existing password, because the import only adds
+group membership. They need no invitation at all. Only newly created identities
+do.
+
 ## Failover between instances
 
 Configuration errors are **not** failed over — a typo should not look like an

@@ -81,6 +81,7 @@ Route::middleware(['web', 'authentik.group'])->group(...);
 | `AuthentikUser::hasVerifiedEmail()` | True only when the provider asserts the address is verified |
 | `authentik.group` middleware | 403 when the group is missing, redirect when not signed in |
 | `Authentik::instances()` | Configured instances, in the order tried |
+| `AuthentikUserImport::recoveryLink($email)` | Single-use password-set link; `null` when no account exists |
 
 ## Failover
 
@@ -113,6 +114,8 @@ sign-in credentials because the token is far more powerful.
   `AuthentikUser::hasVerifiedEmail()` is true.
 - Never relink an account whose `authentik_sub` is already set to a different
   value.
+- Never assume an imported user can sign in. A new identity has an unusable
+  password and needs a recovery link before its owner can authenticate.
 
 ## Verifying the work
 

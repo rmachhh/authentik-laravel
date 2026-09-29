@@ -8,11 +8,11 @@ use Authentik\Contracts\Transport;
 use Authentik\Http\NativeTransport;
 
 /**
- * Import users into authentik.
+ * Manage users in authentik: import them, and get them a way to sign in.
  *
- * Deliberately one-directional and repeatable. The application stays the source
- * of truth for who exists; this reconciles authentik with it rather than
- * mirroring it back:
+ * The import is deliberately one-directional and repeatable. The application
+ * stays the source of truth for who exists; this reconciles authentik with it
+ * rather than mirroring it back:
  *
  *   * a user absent from authentik is created
  *   * a user already present is left alone but added to any missing group
@@ -21,8 +21,11 @@ use Authentik\Http\NativeTransport;
  * It never deletes anyone. Removing a user from a shared identity provider
  * affects every connected system, so that stays a deliberate act.
  *
- * No password is set. This establishes who exists, not how they sign in; an
- * administrator triggers a password reset for the accounts that need one.
+ * No password is set, which means an imported identity cannot sign in anywhere
+ * until it has one — including through SSO, because authentik's own login asks
+ * for a password first. `recoveryLink()` is the other half: it mints a one-time
+ * link the application can deliver so the person chooses their own password.
+ * Neither half sends mail; that belongs to the application.
  *
  * Requires an API token belonging to a service account, which is a far more
  * powerful credential than the sign-in client secret. It is supplied
@@ -70,6 +73,61 @@ final class AuthentikUserImport
         );
 
         return $response['status'] === 200;
+    }
+
+    /**
+     * A single-use link that lets somebody set their own password.
+     *
+     * The counterpart to import(). An imported identity is created with an
+     * unusable password — `!` followed by random characters, which no guess can
+     * ever match — so without this the account exists but its owner cannot sign
+     * in anywhere, including through SSO, because authentik's own login needs a
+     * password. This is how a freshly created user gets one.
+     *
+     * Nothing is emailed here. The caller decides how the link reaches the
+     * person, because the application usually already owns a working mail
+     * channel and the link carries a one-time token that should be delivered
+     * over a channel the recipient trusts.
+     *
+     * The deployment must have a recovery flow configured; authentik answers
+     * `No recovery flow set.` otherwise, which surfaces in the exception.
+     *
+     * @return string|null null when no account exists for the address
+     */
+    public function recoveryLink(string $email): ?string
+    {
+        $user = $this->findUserByEmail($email);
+
+        if ($user === null) {
+            return null;
+        }
+
+        $pk = (int) ($user['pk'] ?? 0);
+
+        if ($pk === 0) {
+            throw new AuthentikException("authentik returned no pk for {$email}");
+        }
+
+        $response = $this->http()->post(
+            $this->baseUrl."/api/v3/core/users/{$pk}/recovery/",
+            [],
+            $this->headers() + ['Content-Type' => 'application/json'],
+        );
+
+        if ($response['status'] < 200 || $response['status'] >= 300) {
+            throw new AuthentikException(
+                "Could not create a recovery link for {$email}: HTTP {$response['status']} ".
+                $this->summarise($response['body'])
+            );
+        }
+
+        $link = json_decode($response['body'], true)['link'] ?? null;
+
+        if (! is_string($link) || $link === '') {
+            throw new AuthentikException("authentik returned no recovery link for {$email}");
+        }
+
+        return $link;
     }
 
     /**

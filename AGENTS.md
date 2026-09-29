@@ -42,6 +42,11 @@ These are load-bearing. A change that breaks one is a bug even if tests pass.
     settings flow lets an account holder edit their own address. An account
     whose `authentik_sub` is already set must not be relinked to a different
     value. Roles are still never assigned from the `groups` claim.
+13. **An imported identity cannot sign in until it gets a recovery link.**
+    `import()` creates identities with no usable password, so nobody it creates
+    can authenticate anywhere, including through SSO. `recoveryLink()` is what
+    gives them a way in. This package never sends mail; the application delivers
+    the link.
 
 ## Layout
 

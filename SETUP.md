@@ -334,6 +334,42 @@ Requires `AUTHENTIK_ADMIN_URL` and `AUTHENTIK_ADMIN_TOKEN` from step 3.
 **Verify:** run the import twice. The second run must report `created: 0` and
 `group additions: 0`. If it reports more, the import is not reconciling.
 
+**Get imported users a way to sign in.** An imported identity is created with an
+unusable password — `!` followed by random characters, which no guess can match —
+so it cannot sign in anywhere yet, including through SSO: authentik asks for a
+password before it issues a token. Import alone leaves every newly created
+identity locked out. Hand each one a single-use recovery link:
+
+```php
+$link = $import->recoveryLink($u->email);
+
+if ($link !== null) {
+    Mail::to($u->email)->send(new SetYourPassword($link));
+}
+```
+
+`recoveryLink()` sends no mail; the application delivers the link. It returns
+`null` when authentik has no account for that address — it does not create one.
+A user that already existed in authentik keeps their existing password, because
+the import only adds group membership, so they need no invitation; only newly
+created identities do. It uses the admin token and base URL from step 3.
+
+This needs a recovery flow in authentik, or it throws `No recovery flow set.`
+Create one:
+
+1. **Flows and Stages → Flows → Create** a flow for recovery.
+2. Set that flow as the recovery flow for your brand (**System → Brands**), or
+   authentik will not use it.
+3. Add a **password prompt** stage and then a **password write** stage. Without
+   both, the flow cannot collect and store a password.
+
+`authentik returned no recovery link` means the response carried no link —
+recheck the stages. **Do not put an identification stage in the recovery flow
+unless an email stage follows it.** Identification alone lets anyone enter any
+address and continue, so a visitor could set the password on someone else's
+account. Either pair it with an email stage that proves the address belongs to
+the person, or omit identification and deliver the link from the application.
+
 ---
 
 ## Step 8 — Verify
