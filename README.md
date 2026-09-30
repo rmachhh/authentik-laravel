@@ -268,6 +268,40 @@ matched by email and keeps their existing password, because the import only adds
 group membership. They need no invitation at all. Only newly created identities
 do.
 
+
+### Inspecting and removing identities
+
+Two lower-level calls, mostly useful for building an administrative reset.
+
+`groupMembers()` returns everyone in the configured access group, with the
+identifiers needed to act on them:
+
+```php
+foreach ($import->groupMembers() as $member) {
+    // ['pk' => 5, 'username' => 'alex', 'email' => 'alex@example.com', 'name' => 'Alex']
+}
+```
+
+It is a single request — the group payload carries its members — and it is
+deliberately strict in one direction: if authentik reports member primary keys
+without their details, it throws rather than returning an empty list. "Nobody
+to delete" and "could not tell who is there" must not look alike to a caller
+that is about to delete things.
+
+`deleteUser()` takes a primary key, because callers that have just listed a
+group already hold them and an address lookup per user doubles the requests in
+a loop whose length is the size of the directory.
+
+```php
+$import->deleteUser(5);   // true
+$import->deleteUser(5);   // false — already gone, which is not an error
+```
+
+**The access group is the safety boundary.** Everything in it was created for
+your application. The authentik administrator, the outpost, and any other
+integration are not members, so a reset built on `groupMembers()` cannot reach
+them. Do not delete users you have not listed this way.
+
 ## Failover between instances
 
 Configuration errors are **not** failed over — a typo should not look like an

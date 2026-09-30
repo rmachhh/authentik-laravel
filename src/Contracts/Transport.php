@@ -32,4 +32,12 @@ interface Transport
      * @return array{status: int, body: string}
      */
     public function patch(string $url, array $body = [], array $headers = []): array;
+
+    /**
+     * DELETE takes no body: the resource is named entirely by the URL.
+     *
+     * @param  array<string, string>  $headers
+     * @return array{status: int, body: string}
+     */
+    public function delete(string $url, array $headers = []): array;
 }

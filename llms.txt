@@ -82,6 +82,8 @@ Route::middleware(['web', 'authentik.group'])->group(...);
 | `authentik.group` middleware | 403 when the group is missing, redirect when not signed in |
 | `Authentik::instances()` | Configured instances, in the order tried |
 | `AuthentikUserImport::recoveryLink($email)` | Single-use password-set link; `null` when no account exists |
+| `AuthentikUserImport::groupMembers()` | The access group's members with `pk`/`username`/`email`; one request |
+| `AuthentikUserImport::deleteUser($pk)` | Delete one identity; `false` when it was already gone |
 
 ## Failover
 

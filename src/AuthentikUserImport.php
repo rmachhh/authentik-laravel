@@ -131,6 +131,94 @@ final class AuthentikUserImport
     }
 
     /**
+     * Everyone in the application's access group, with the identifiers needed
+     * to act on them.
+     *
+     * This group is what separates identities created for this application from
+     * everything else in the provider — the administrator account, the outpost,
+     * other integrations — which is what makes it the only safe boundary for
+     * anything destructive. See deleteUser().
+     *
+     * One request: the group payload carries its members as `users_obj`. When
+     * that is missing but `users` is not, this throws rather than reporting an
+     * empty directory, because "nobody to delete" and "could not tell" must not
+     * look the same to a caller that is about to delete things.
+     *
+     * @return list<array{pk: int, username: string, email: string, name: string}>
+     */
+    public function groupMembers(): array
+    {
+        $group = $this->findGroup($this->appGroup);
+
+        if ($group === null) {
+            return [];
+        }
+
+        $members = $group['users_obj'] ?? null;
+
+        if (! is_array($members)) {
+            if (array_filter(array_map('intval', $group['users'] ?? [])) !== []) {
+                throw new AuthentikException(
+                    "authentik listed members of {$this->appGroup} without their details, "
+                    .'so they cannot be identified safely.'
+                );
+            }
+
+            return [];
+        }
+
+        $listed = [];
+
+        foreach ($members as $user) {
+            $pk = (int) ($user['pk'] ?? 0);
+
+            if ($pk === 0) {
+                continue;
+            }
+
+            $listed[] = [
+                'pk' => $pk,
+                'username' => (string) ($user['username'] ?? ''),
+                'email' => (string) ($user['email'] ?? ''),
+                'name' => (string) ($user['name'] ?? ''),
+            ];
+        }
+
+        return $listed;
+    }
+
+    /**
+     * Delete one identity.
+     *
+     * Takes a primary key rather than an address: callers listing a group
+     * already hold them, and looking each one up by address would double the
+     * requests in a loop whose length is the size of the directory.
+     *
+     * @return bool false when the identity was already gone
+     */
+    public function deleteUser(int|string $pk): bool
+    {
+        $response = $this->http()->delete(
+            $this->baseUrl."/api/v3/core/users/{$pk}/",
+            $this->headers(),
+        );
+
+        // Already gone. Somebody else got there first, which is the outcome
+        // being asked for either way.
+        if ($response['status'] === 404) {
+            return false;
+        }
+
+        if (! in_array($response['status'], [200, 204], true)) {
+            throw new AuthentikException(
+                "Could not delete user {$pk}: HTTP {$response['status']} ".$this->summarise($response['body'])
+            );
+        }
+
+        return true;
+    }
+
+    /**
      * What the import would do, without doing it.
      *
      * Running this first is the point: an administrator sees exactly which
@@ -457,6 +545,30 @@ final class AuthentikUserImport
     /** @return array<string, mixed> */
     private function findOrCreateGroup(string $name): array
     {
+        $group = $this->findGroup($name);
+
+        if ($group !== null) {
+            return $group;
+        }
+
+        $created = $this->http()->post(
+            $this->baseUrl.'/api/v3/core/groups/',
+            ['name' => $name, 'is_superuser' => false],
+            $this->headers() + ['Content-Type' => 'application/json'],
+        );
+
+        if (! in_array($created['status'], [200, 201], true)) {
+            throw new AuthentikException(
+                "Could not create group {$name}: HTTP {$created['status']} ".$this->summarise($created['body'])
+            );
+        }
+
+        return json_decode($created['body'], true) ?? [];
+    }
+
+    /** @return array<string, mixed>|null null when no group carries that name */
+    private function findGroup(string $name): ?array
+    {
         $response = $this->http()->get(
             $this->baseUrl.'/api/v3/core/groups/?'.http_build_query(['name' => $name, 'page_size' => 20]),
             $this->headers(),
@@ -474,19 +586,7 @@ final class AuthentikUserImport
             }
         }
 
-        $created = $this->http()->post(
-            $this->baseUrl.'/api/v3/core/groups/',
-            ['name' => $name, 'is_superuser' => false],
-            $this->headers() + ['Content-Type' => 'application/json'],
-        );
-
-        if (! in_array($created['status'], [200, 201], true)) {
-            throw new AuthentikException(
-                "Could not create group {$name}: HTTP {$created['status']} ".$this->summarise($created['body'])
-            );
-        }
-
-        return json_decode($created['body'], true) ?? [];
+        return null;
     }
 
     /**

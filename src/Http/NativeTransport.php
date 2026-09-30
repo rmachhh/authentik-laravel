@@ -33,6 +33,11 @@ final class NativeTransport implements Transport
         return $this->request('PATCH', $url, $body, $headers);
     }
 
+    public function delete(string $url, array $headers = []): array
+    {
+        return $this->request('DELETE', $url, null, $headers);
+    }
+
     /**
      * @param  array<string, mixed>|null  $body
      * @param  array<string, string>  $headers

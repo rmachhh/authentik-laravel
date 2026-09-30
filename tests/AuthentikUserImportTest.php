@@ -44,6 +44,13 @@ class FakeTransport implements Transport
         return $this->respond($url, $body);
     }
 
+    public function delete(string $url, array $headers = []): array
+    {
+        $this->calls[] = ['method' => 'DELETE', 'url' => $url, 'body' => [], 'headers' => $headers];
+
+        return $this->respond($url, []);
+    }
+
     /** @param array<string, mixed> $body */
     private function respond(string $url, array $body): array
     {
@@ -436,5 +443,110 @@ final class AuthentikUserImportTest extends TestCase
         $this->expectExceptionMessageMatches('/no recovery link/');
 
         $this->importer($transport)->recoveryLink('alex@example.com');
+    }
+
+    // ------------------------------------------------- the access group
+
+    public function test_it_lists_the_members_of_the_access_group(): void
+    {
+        $transport = new FakeTransport([
+            '/groups/' => ['status' => 200, 'body' => ['results' => [[
+                'pk' => 'the-group',
+                'name' => 'myapp-access',
+                'users' => [5, 6],
+                'users_obj' => [
+                    ['pk' => 5, 'username' => 'teacher', 'email' => 'teacher@example.com', 'name' => 'A Teacher'],
+                    ['pk' => 6, 'username' => 'admin', 'email' => 'admin@example.com', 'name' => 'An Admin'],
+                ],
+            ]]]],
+        ]);
+
+        $members = $this->importer($transport)->groupMembers();
+
+        self::assertSame([
+            ['pk' => 5, 'username' => 'teacher', 'email' => 'teacher@example.com', 'name' => 'A Teacher'],
+            ['pk' => 6, 'username' => 'admin', 'email' => 'admin@example.com', 'name' => 'An Admin'],
+        ], $members);
+
+        // One request, not one per member: the caller may be looping over a
+        // whole directory.
+        self::assertCount(1, $transport->calls);
+    }
+
+    public function test_it_reports_no_members_when_the_group_does_not_exist(): void
+    {
+        $transport = new FakeTransport([
+            '/groups/' => ['status' => 200, 'body' => ['results' => []]],
+        ]);
+
+        self::assertSame([], $this->importer($transport)->groupMembers());
+    }
+
+    public function test_it_refuses_to_report_members_it_cannot_identify(): void
+    {
+        // "Nobody to delete" and "could not tell who is there" must not look
+        // the same to a caller that is about to delete things.
+        $transport = new FakeTransport([
+            '/groups/' => ['status' => 200, 'body' => ['results' => [[
+                'pk' => 'the-group',
+                'name' => 'myapp-access',
+                'users' => [5, 6],
+            ]]]],
+        ]);
+
+        $this->expectException(AuthentikException::class);
+        $this->expectExceptionMessageMatches('/cannot be identified safely/');
+
+        $this->importer($transport)->groupMembers();
+    }
+
+    public function test_a_group_with_no_members_and_no_details_is_simply_empty(): void
+    {
+        $transport = new FakeTransport([
+            '/groups/' => ['status' => 200, 'body' => ['results' => [[
+                'pk' => 'the-group',
+                'name' => 'myapp-access',
+                'users' => [],
+            ]]]],
+        ]);
+
+        self::assertSame([], $this->importer($transport)->groupMembers());
+    }
+
+    // ------------------------------------------------------- deletion
+
+    public function test_it_deletes_a_user(): void
+    {
+        $transport = new FakeTransport([
+            '/api/v3/core/users/5/' => ['status' => 204, 'body' => []],
+        ]);
+
+        self::assertTrue($this->importer($transport)->deleteUser(5));
+
+        self::assertSame('DELETE', $transport->calls[0]['method']);
+        self::assertSame('https://id.example.com/api/v3/core/users/5/', $transport->calls[0]['url']);
+        // Nothing to encode, so no body is sent.
+        self::assertSame([], $transport->calls[0]['body']);
+    }
+
+    public function test_deleting_a_user_who_is_already_gone_is_not_a_failure(): void
+    {
+        $transport = new FakeTransport([
+            '/api/v3/core/users/5/' => ['status' => 404, 'body' => ['detail' => 'Not found.']],
+        ]);
+
+        self::assertFalse($this->importer($transport)->deleteUser(5));
+    }
+
+    public function test_a_failed_delete_surfaces_the_reason(): void
+    {
+        $transport = new FakeTransport([
+            '/api/v3/core/users/5/' => ['status' => 400, 'body' => ['detail' => 'Cannot delete the last superuser.']],
+        ]);
+
+        $this->expectException(AuthentikException::class);
+        $this->expectExceptionMessageMatches('/Cannot delete the last superuser/');
+
+        $this->importer($transport)->deleteUser(5);
     }
 }

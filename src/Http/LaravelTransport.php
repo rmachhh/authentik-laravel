@@ -43,6 +43,18 @@ final class LaravelTransport implements Transport
         return ['status' => $response->status(), 'body' => $response->body()];
     }
 
+    public function delete(string $url, array $headers = []): array
+    {
+        // No body, so this does not go through send(): there is nothing to
+        // encode and no Content-Type to reconcile.
+        $response = Http::withHeaders($this->withoutContentType($headers))
+            ->timeout($this->timeout)
+            ->acceptJson()
+            ->delete($url);
+
+        return ['status' => $response->status(), 'body' => $response->body()];
+    }
+
     /**
      * @param  array<string, mixed>  $body
      * @param  array<string, string>  $headers
