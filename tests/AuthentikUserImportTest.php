@@ -455,8 +455,8 @@ final class AuthentikUserImportTest extends TestCase
                 'name' => 'myapp-access',
                 'users' => [5, 6],
                 'users_obj' => [
-                    ['pk' => 5, 'username' => 'teacher', 'email' => 'teacher@example.com', 'name' => 'A Teacher'],
-                    ['pk' => 6, 'username' => 'admin', 'email' => 'admin@example.com', 'name' => 'An Admin'],
+                    ['pk' => 5, 'uid' => 'uid-five', 'username' => 'teacher', 'email' => 'teacher@example.com', 'name' => 'A Teacher'],
+                    ['pk' => 6, 'uid' => 'uid-six', 'username' => 'admin', 'email' => 'admin@example.com', 'name' => 'An Admin'],
                 ],
             ]]]],
         ]);
@@ -464,8 +464,8 @@ final class AuthentikUserImportTest extends TestCase
         $members = $this->importer($transport)->groupMembers();
 
         self::assertSame([
-            ['pk' => 5, 'username' => 'teacher', 'email' => 'teacher@example.com', 'name' => 'A Teacher'],
-            ['pk' => 6, 'username' => 'admin', 'email' => 'admin@example.com', 'name' => 'An Admin'],
+            ['pk' => 5, 'uid' => 'uid-five', 'username' => 'teacher', 'email' => 'teacher@example.com', 'name' => 'A Teacher'],
+            ['pk' => 6, 'uid' => 'uid-six', 'username' => 'admin', 'email' => 'admin@example.com', 'name' => 'An Admin'],
         ], $members);
 
         // One request, not one per member: the caller may be looping over a

@@ -278,9 +278,14 @@ identifiers needed to act on them:
 
 ```php
 foreach ($import->groupMembers() as $member) {
-    // ['pk' => 5, 'username' => 'alex', 'email' => 'alex@example.com', 'name' => 'Alex']
+    // ['pk' => 5, 'uid' => '9f2c…', 'username' => 'alex', 'email' => 'alex@example.com', 'name' => 'Alex']
 }
 ```
+
+`uid` is included because it is the only stable handle on a member: the address
+and the display name are both mutable, so a caller that needs to recognise one
+particular identity — its own, before deleting others — cannot safely match on
+an address that may have changed.
 
 It is a single request — the group payload carries its members — and it is
 deliberately strict in one direction: if authentik reports member primary keys

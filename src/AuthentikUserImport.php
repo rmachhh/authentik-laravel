@@ -144,7 +144,12 @@ final class AuthentikUserImport
      * empty directory, because "nobody to delete" and "could not tell" must not
      * look the same to a caller that is about to delete things.
      *
-     * @return list<array{pk: int, username: string, email: string, name: string}>
+     * `uid` is included because it is the only stable handle on a member: the
+     * address and the display name are both mutable, and a caller that needs to
+     * recognise one particular identity — its own, before deleting others —
+     * cannot safely do that by matching an address that may have changed.
+     *
+     * @return list<array{pk: int, uid: string, username: string, email: string, name: string}>
      */
     public function groupMembers(): array
     {
@@ -178,6 +183,7 @@ final class AuthentikUserImport
 
             $listed[] = [
                 'pk' => $pk,
+                'uid' => (string) ($user['uid'] ?? ''),
                 'username' => (string) ($user['username'] ?? ''),
                 'email' => (string) ($user['email'] ?? ''),
                 'name' => (string) ($user['name'] ?? ''),
